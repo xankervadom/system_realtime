@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高精度现代时钟</title>
+    <!-- 已移除 Tailwind CSS CDN，所有样式现在都是本地 CSS -->
+    <style>
+        /* CSS Reset and Global Styles (Equivalent to Tailwind defaults and global font) */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* 深色背景 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        
+        /* 主容器样式 (Equivalent to gradient-bg, flex, p-10, rounded-3xl, shadow-2xl) */
+        .main-container {
+            display: flex;
+            flex-direction: column; /* md:flex-row */
+            align-items: center;
+            justify-content: center;
+            padding: 40px; /* p-10 (40px) */
+            border-radius: 24px; /* rounded-3xl */
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); /* shadow-2xl */
+        }
+
+        /* 响应式间距 (Equivalent to space-y-12 md:space-y-0 md:space-x-20) */
+        .main-container > * {
+            margin-top: 48px; /* space-y-12 (48px) */
+        }
+        .main-container > *:first-child {
+            margin-top: 0;
+        }
+
+        @media (min-width: 768px) { /* md breakpoint */
+            .main-container {
+                flex-direction: row;
+            }
+            .main-container > * {
+                margin-top: 0;
+                margin-left: 80px; /* space-x-20 (80px) */
+            }
+            .main-container > *:first-child {
+                margin-left: 0;
+            }
+        }
+        
+        /* 模拟时钟指针基础样式 */
+        .hand-base {
+            position: absolute;
+            bottom: 50%;
+            left: 50%;
+            transform-origin: center bottom;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+            transition: transform 0.05s linear;
+        }
+
+        /* 时针样式 */
+        #hour-hand {
+            width: 6px;
+            height: 25%; /* 占容器高度的 25% */
+            border-radius: 3px;
+            z-index: 3;
+        }
+
+        /* 分针样式 */
+        #minute-hand {
+            width: 4px;
+            height: 38%; /* 占容器高度的 38% */
+            border-radius: 2px;
+            z-index: 4;
+        }
+
+        /* 秒针样式 (保持醒目的红色以确保易读性和对比度) */
+        #second-hand {
+            width: 2px;
+            height: 45%; /* 占容器高度的 45% */
+            background: #ef4444; /* 红色 */
+            z-index: 5;
+        }
+
+        /* 中心圆点 (保持红色以搭配秒针) - 增大尺寸 */
+        .center-dot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 18px; 
+            height: 18px; 
+            background-color: #ef4444;
+            border-radius: 50%;
+            z-index: 10;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
+        }
+
+        /* --- 动态渐变背景样式 (用于主容器，低亮度 L=15%) - 12 个颜色步长 --- */
+        .gradient-bg {
+            background: linear-gradient(135deg, 
+                /* 12 个颜色步长，过渡更平滑 */
+                hsl(330, 70%, 60%), 
+                hsl(300, 70%, 60%), 
+                hsl(270, 70%, 60%), 
+                hsl(240, 70%, 60%), 
+                hsl(210, 70%, 60%), 
+                hsl(180, 70%, 60%), 
+                hsl(150, 70%, 60%), 
+                hsl(120, 70%, 60%), 
+                hsl(90, 70%, 60%), 
+                hsl(60, 70%, 60%),  
+                hsl(30, 70%, 60%), 
+                hsl(0, 70%, 60%)    
+            );
+            background-size: 500% 500%; 
+            animation: hue-shift-animation 20s ease infinite alternate; 
+        }
+
+        @keyframes hue-shift-animation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        /* --- 动态色彩渐变 (用于指针、刻度、文字，中等亮度 L=50%) - 12 个颜色步长 --- */
+        .color-gradient {
+            background: linear-gradient(90deg, 
+                /* 12 个颜色步长，过渡更平滑 */
+                hsl(330, 70%, 60%), 
+                hsl(300, 70%, 60%), 
+                hsl(270, 70%, 60%), 
+                hsl(240, 70%, 60%), 
+                hsl(210, 70%, 60%), 
+                hsl(180, 70%, 60%), 
+                hsl(150, 70%, 60%), 
+                hsl(120, 70%, 60%), 
+                hsl(90, 70%, 60%), 
+                hsl(60, 70%, 60%),  
+                hsl(30, 70%, 60%), 
+                hsl(0, 70%, 60%)    
+            );
+            background-size: 600% 100%; 
+            animation: color-shift-animation 10s linear infinite; 
+        }
+        
+        @keyframes color-shift-animation {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 600% 50%; } 
+        }
+
+        /* 文本渐变样式 */
+        .text-gradient {
+            /* 继承 color-gradient 的背景和动画 */
+            background: linear-gradient(90deg, 
+                hsl(330, 70%, 60%), 
+                hsl(300, 70%, 60%), 
+                hsl(270, 70%, 60%), 
+                hsl(240, 70%, 60%), 
+                hsl(210, 70%, 60%), 
+                hsl(180, 70%, 60%), 
+                hsl(150, 70%, 60%), 
+                hsl(120, 70%, 60%), 
+                hsl(90, 70%, 60%), 
+                hsl(60, 70%, 60%),  
+                hsl(30, 70%, 60%), 
+                hsl(0, 70%, 60%)    
+            );
+            background-size: 600% 100%; 
+            animation: color-shift-animation 10s linear infinite;
+            
+            /* 关键步骤：使背景通过文本形状显示 */
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text; 
+            color: transparent; /* fallback for text fill color */
+        }
+
+        /* 1. 模拟时钟容器样式 (Equivalent to w-96 h-96 aspect-square bg-gray-800 rounded-full shadow-2xl flex items-center justify-center border-8 border-gray-700) */
+        .analog-clock-container {
+            position: relative;
+            width: 384px; /* w-96 (24rem) */
+            height: 384px; /* h-96 (24rem) */
+            aspect-ratio: 1 / 1; /* aspect-square */
+            background-color: #1f2937; /* bg-gray-800 or similar dark color */
+            border-radius: 50%; /* rounded-full */
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); /* shadow-2xl */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 8px solid #374151; /* border-8 border-gray-700 */
+        }
+
+        /* 刻度定位基础 */
+        .scale-container {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+        }
+
+        /* 刻度条和数字定位辅助类 */
+        .scale-item {
+            position: absolute;
+        }
+
+        /* 12点刻度 */
+        .scale-12-bar { top: 8px; left: 50%; transform: translateX(-50%); width: 8px; height: 16px; border-radius: 2px; }
+        .scale-12-text { top: 40px; left: 50%; transform: translateX(-50%); font-size: 1.25rem; font-weight: 700; }
+        
+        /* 3点刻度 */
+        .scale-3-bar { right: 8px; top: 50%; transform: translateY(-50%); width: 16px; height: 8px; border-radius: 2px; }
+        .scale-3-text { right: 40px; top: 50%; transform: translateY(-50%); font-size: 1.25rem; font-weight: 700; }
+
+        /* 6点刻度 */
+        .scale-6-bar { bottom: 8px; left: 50%; transform: translateX(-50%); width: 8px; height: 16px; border-radius: 2px; }
+        .scale-6-text { bottom: 40px; left: 50%; transform: translateX(-50%); font-size: 1.25rem; font-weight: 700; }
+
+        /* 9点刻度 */
+        .scale-9-bar { left: 8px; top: 50%; transform: translateY(-50%); width: 16px; height: 8px; border-radius: 2px; }
+        .scale-9-text { left: 40px; top: 50%; transform: translateY(-50%); font-size: 1.25rem; font-weight: 700; }
+
+        /* 2. 数字时钟容器样式 (Equivalent to bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-700 w-full max-w-md text-center) */
+        .digital-clock-container {
+            background-color: #1f2937; /* bg-gray-800 */
+            padding: 32px; /* p-8 (32px) */
+            border-radius: 12px; /* rounded-xl */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-lg */
+            border: 1px solid #374151; /* border border-gray-700 */
+            width: 100%; /* w-full */
+            max-width: 448px; /* max-w-md (28rem) */
+            text-align: center; /* text-center */
+        }
+
+        /* 标题样式 (Equivalent to text-2xl font-light mb-4) */
+        .digital-title {
+            font-size: 1.5rem; /* text-2xl */
+            font-weight: 300; /* font-light */
+            margin-bottom: 16px; /* mb-4 */
+        }
+        
+        /* 时间主体样式 (Equivalent to text-7xl font-mono tracking-wider) */
+        .digital-time {
+            font-size: 4.5rem; /* text-7xl */
+            font-family: monospace; /* font-mono */
+            letter-spacing: 0.05em; /* tracking-wider */
+            color: white; 
+        }
+
+        /* 毫秒样式 (Equivalent to text-4xl font-mono mt-2 opacity-80) */
+        .digital-ms {
+            font-size: 2.25rem; /* text-4xl */
+            font-family: monospace; /* font-mono */
+            margin-top: 8px; /* mt-2 */
+            opacity: 0.8;
+        }
+
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- 主容器：应用动态渐变背景 -->
+    <div class="main-container gradient-bg">
+
+        <!-- 1. 模拟时钟 (左侧) -->
+        <div class="analog-clock-container">
+            
+            <!-- 时钟刻度 (应用渐变色) -->
+            <div class="scale-container">
+                <!-- 12点 -->
+                <div class="scale-item scale-12-bar color-gradient"></div>
+                <div class="scale-item scale-12-text text-gradient">12</div>
+                
+                <!-- 3点 -->
+                <div class="scale-item scale-3-bar color-gradient"></div>
+                <div class="scale-item scale-3-text text-gradient">3</div>
+                
+                <!-- 6点 -->
+                <div class="scale-item scale-6-bar color-gradient"></div>
+                <div class="scale-item scale-6-text text-gradient">6</div>
+                
+                <!-- 9点 -->
+                <div class="scale-item scale-9-bar color-gradient"></div>
+                <div class="scale-item scale-9-text text-gradient">9</div>
+            </div>
+
+            <!-- 指针容器 -->
+            <div class="scale-container">
+                <!-- 时针和分针应用.color-gradient -->
+                <div id="hour-hand" class="hand-base color-gradient"></div>
+                <div id="minute-hand" class="hand-base color-gradient"></div>
+                <div id="second-hand" class="hand-base"></div>
+            </div>
+
+            <!-- 中心点 -->
+            <div class="center-dot"></div>
+        </div>
+
+        <!-- 2. 数字时钟 (右侧) -->
+        <div class="digital-clock-container">
+            <!-- 标题应用.text-gradient -->
+            <h2 class="digital-title text-gradient">本地系统时间</h2>
+            
+            <!-- 时间显示应用.text-gradient -->
+            <div id="digital-display" class="digital-time text-gradient">
+                00:00:00
+            </div>
+            
+            <!-- 毫秒显示应用.text-gradient -->
+            <p id="digital-ms" class="digital-ms text-gradient">
+                .000
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // 获取 DOM 元素引用
+        const hourHand = document.getElementById('hour-hand');
+        const minuteHand = document.getElementById('minute-hand');
+        const secondHand = document.getElementById('second-hand');
+        const digitalDisplay = document.getElementById('digital-display');
+        const digitalMs = document.getElementById('digital-ms');
+
+        // 使用 requestAnimationFrame 实现高精度、平滑的时钟更新
+        function updateClocks() {
+            const now = new Date();
+            const ms = now.getMilliseconds();
+            const s = now.getSeconds();
+            const m = now.getMinutes();
+            // 获取小时 (12小时制，0点和12点都视为12)
+            const h = now.getHours() % 12 || 12; 
+
+            // --- 1. 模拟时钟指针角度计算 (包含毫秒，实现平滑移动) ---
+
+            // 秒针角度：每秒 6° (360/60)，加上毫秒的贡献
+            const s_total = s + ms / 1000;
+            const secAngle = s_total * 6;
+            // CSS transform: 先平移自身宽度的一半居中，再旋转
+            secondHand.style.transform = `translate(-50%, 0) rotate(${secAngle}deg)`;
+
+            // 分针角度：每分钟 6° (360/60)，加上秒和毫秒的贡献
+            const m_total = m + s / 60 + ms / 60000;
+            const minAngle = m_total * 6;
+            minuteHand.style.transform = `translate(-50%, 0) rotate(${minAngle}deg)`;
+
+            // 时针角度：每小时 30° (360/12)，加上分和秒/毫秒的贡献
+            const h_total = h + m / 60 + s / 3600 + ms / 3600000;
+            const hourAngle = h_total * 30;
+            hourHand.style.transform = `translate(-50%, 0) rotate(${hourAngle}deg)`;
+
+
+            // --- 2. 数字时钟更新 ---
+
+            const hours24 = now.getHours();
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+
+            // 格式化 HH:MM:SS
+            const formattedTime = [hours24, minutes, seconds]
+                .map(t => String(t).padStart(2, '0'))
+                .join(':');
+
+            // 格式化毫秒部分
+            const formattedMs = String(ms).padStart(3, '0');
+
+            digitalDisplay.textContent = formattedTime;
+            digitalMs.textContent = `.${formattedMs}`;
+
+            // 循环调用，以显示器刷新率为目标进行更新，实现平滑和高精度
+            requestAnimationFrame(updateClocks);
+        }
+
+        window.onload = function() {
+            // 启动时钟更新循环
+            updateClocks();
+        }
+    </script>
+</body>
+</html>
